@@ -1,418 +1,315 @@
 ﻿using UnityEngine;
-using UnityEngine.UI;
 using UnityEngine.Audio;
 using UnityEngine.SceneManagement;
-using System.Collections;
 using TMPro;
+using System.Collections; // 👈 necesario para IEnumerator
+using DG.Tweening; // 👈 necesario para DOTween
+
 
 public class MainMenu : MonoBehaviour
 {
     public static class SceneNames
     {
-        //public const string MainMenu = "1-MainMenu";
-        public const string Gameplay = "Gameplay";
+        public const string MAIN_MENU = "1-MainMenu";
+        public const string HUB = "2-Hub Principal";
+        public const string Ex = "3-Exploracion";
     }
+    private bool Prototipo = true;
+    private bool entrandoADungeon = false;
 
+    [Header("Animación de entrada a la cueva")]
+
+    public float zoomOutSize = 5.5f;
+    public float zoomOutDuration = 0.3f;
+
+    public float zoomInSize = 0.3f;
+    public float zoomInDuration = 1.3f;
+
+    public Vector3 targetPosition; // centro de la puerta
+
+
+    public Vector2 puertaOffset = new Vector2(0f, 750f);
+
+    [Header("Importar otros scripts")]
+    //public GameManager MG;
+
+    [Header("Importar variables ajenas")]
+    public bool partida_En_Curso = false;
+    //partida_En_Curso = true;
+
+    public int Partidas_Jugadas = 0;
 
     [Header("Definir paneles de la escena")]
     public RectTransform Panel_PressStart;
-    public RectTransform Panel_MainMenu;
-    public RectTransform Panel_Niveles;
-    public RectTransform Panel_SpeedRun;
-    public RectTransform Panel_Tienda;
-    public RectTransform Panel_Salir;
+    public RectTransform Panel_Slots;
+    public RectTransform Panel_Botones;
+    public RectTransform Panel_Estadisticas;
+    public RectTransform Panel_Novedades;
+    public RectTransform Panel_Opciones;
 
+    public RectTransform Panel_TextoBloqueado;
+    public CanvasGroup CanvasGroup_TextoBloqueado;
+    private Sequence secuenciaMensaje;
+
+    public RectTransform Panel_Continuar_Run;
+    public RectTransform Panel_Elegir_Slot;
+
+    [Header("Fondo del menú")]
+    public RectTransform fondo;
 
     [Header("Sonidos")]
-    public AudioClip sonido_PressStart;
-    public AudioClip sonido_Confirmacion;
-    public AudioClip sonido_Denegacion;
-    public AudioClip sonido_Play;
+    public AudioClip sonidoPressStart;
+    public AudioClip sonidoConfirmacion;
+    public AudioClip sonidoConfirmacion_Jugar;
+    public AudioClip sonido_Entrar_Cueva;
 
-    [Header("Música")]
-    public AudioClip musicaMenu;
-    public AudioClip musicaTienda;
+    [Header("sonido Personajes")]
+    public AudioClip Sonido_Capyguardian;
 
-    [Header("Información del nivel")]
-    // TMP que muestra "Nivel 01"
-    public TextMeshProUGUI textoNivelSeleccionado;
+    [Header("Fuente de audio principal")]
+    public AudioSource audioSource;
 
-    // TMP que muestra el mejor tiempo
-    public TextMeshProUGUI textoMejorTiempo;
-
-    // Medallas
-    public Image medallaBronce;
-    public Image medallaPlata;
-    public Image medallaOro;
-
-    [Header("Seleccion de niveles")]
-    public SelectorNivel[] selectoresNivel;
-
-    // =========================================================
-    // MENÚ PRINCIPAL
-    // =========================================================
-
-    private void Start()
+    public void Awake()
     {
-        AudioManager.Instance.ReproducirMusica(musicaMenu);
-        // Comprobar si venimos desde el botón "Select Level" del menú de pausa
-        if (NivelSeleccionado.irASeleccionNivel)
+        Panel_TextoBloqueado.gameObject.SetActive(false);
+    }
+    public void PressStart() //Clic
+    {
+        audioSource.PlayOneShot(sonidoPressStart);
+        OcultarPanel(Panel_PressStart);
+        MostrarPanel(Panel_Botones);
+    }
+    public void Jugar() //Clic
+    {
+        if (partida_En_Curso == false)
         {
-            // Consumimos la bandera para evitar que vuelva a abrirse al reiniciar
-            NivelSeleccionado.irASeleccionNivel = false;
-
-            // Ocultamos las pantallas de inicio
-            OcultarPanel(Panel_PressStart);
-            OcultarPanel(Panel_MainMenu);
-
-            // Abrimos directamente el panel de selección de niveles
-            MostrarPanel(Panel_Niveles);
-            ActualizarNivelesDesbloqueados();
-            MostrarInformacionNivel(1);
+            if (Partidas_Jugadas == 0)
+            {
+                //Cargar Escena 3
+                StartCoroutine(ZoomBackground(SceneNames.Ex));
+            }
+            else
+            {
+                //Cargar Escena 2
+                StartCoroutine(ZoomBackground(SceneNames.HUB));
+            }
         }
         else
         {
-            // Estado por defecto al iniciar el juego o desde el botón Salir/Exit
-            MostrarPanel(Panel_PressStart);
-            OcultarPanel(Panel_MainMenu);
-            OcultarPanel(Panel_Niveles);
+            OcultarPanel(Panel_Botones);
+            MostrarPanel(Panel_Continuar_Run);
         }
     }
-    public void PressStart() // Clic
+    public void Reanudar()
     {
-        AudioManager.Instance.ReproducirSFX(sonido_PressStart);
-
-        OcultarPanel(Panel_PressStart);
-        MostrarPanel(Panel_MainMenu);
+        //Cargar escena 3 en la misma zona y lugar que estabas antes, con los datos que se tenian
+        //Cargar_Datos()
+        StartCoroutine(ZoomBackground(SceneNames.Ex));
     }
-    public void Jugar() // Clic
+    public void Iniciar_nueva_run()
     {
-        AudioManager.Instance.ReproducirSFX(sonido_Play);
-
-        int nivelAContinuar = 0;
-
-        // Buscar el primer nivel que no tenga ninguna medalla
-        for (int i = 0; i < 24; i++)
-        {
-            string claveMedalla = "RollingMaze_Nivel_" + i;
-
-            int medalla = PlayerPrefs.GetInt(claveMedalla, 0);
-
-            if (medalla == 0)
-            {
-                nivelAContinuar = i;
-                break;
-            }
-
-            // Si llegamos al último y también está completado,
-            // volveremos al nivel 1.
-            if (i == 23)
-            {
-                nivelAContinuar = 0;
-            }
-        }
-
-        NivelSeleccionado.indiceNivel = nivelAContinuar;
-        NivelSeleccionado.tipoPartida = TipoPartida.NivelNormal;
-
-        OcultarPanel(Panel_MainMenu);
-
-        SceneManager.LoadScene(SceneNames.Gameplay);
+        //Cargar escena 2, borrar datos de la partida en curso
+        //Borrar_Datos()
+        StartCoroutine(ZoomBackground(SceneNames.HUB));
     }
-    public void Seleccionar_Escena()
+    public void Cancelar()
     {
-        AudioManager.Instance.ReproducirSFX(sonido_Confirmacion);
-
-        OcultarPanel(Panel_MainMenu);
-        MostrarPanel(Panel_Niveles);
-
-        ActualizarNivelesDesbloqueados();
-
-        MostrarInformacionNivel(1);
-    }
-    public void Salir_Seleccionar_Escena() // Clic
-    {
-        AudioManager.Instance.ReproducirSFX(sonido_Denegacion);
-
-        OcultarPanel(Panel_Niveles);
-        MostrarPanel(Panel_MainMenu);
-    }
-    public void Seleccionar_SpeedRun() // Clic
-    {
-        AudioManager.Instance.ReproducirSFX(sonido_Confirmacion);
-
-        OcultarPanel(Panel_MainMenu);
-        MostrarPanel(Panel_SpeedRun);
-    }
-    public void Salir_Seleccionar_SpeedRun() // Clic
-    {
-        AudioManager.Instance.ReproducirSFX(sonido_Denegacion);
-
-        OcultarPanel(Panel_SpeedRun);
-        MostrarPanel(Panel_MainMenu);
+        OcultarPanel(Panel_Continuar_Run);
+        MostrarPanel(Panel_Botones);
     }
 
-    public void Tienda()
+    public void Estadisticas()  //Clic
     {
-        AudioManager.Instance.ReproducirSFX(sonido_Confirmacion);
+        MostrarMensajeBloqueado();
 
-        AudioManager.Instance.ReproducirMusica(musicaTienda);
+        if (Prototipo)
+            return;
 
-        OcultarPanel(Panel_MainMenu);
-        MostrarPanel(Panel_Tienda);
+        OcultarPanel(Panel_Botones);
+        MostrarPanel(Panel_Estadisticas);
     }
-    public void Salir_Tienda()
+
+    public void Salir_Estadisticas() //Clic al boton salir en el panel de Estadisticas
     {
-        AudioManager.Instance.ReproducirSFX(sonido_Denegacion);
-
-        AudioManager.Instance.ReproducirMusica(musicaMenu);
-
-        OcultarPanel(Panel_Tienda);
-        MostrarPanel(Panel_MainMenu);
+        OcultarPanel(Panel_Estadisticas);
+        MostrarPanel(Panel_Botones);
     }
-    public void Salir() // Clic
+
+    public void Opciones()  //Clic
     {
-        AudioManager.Instance.ReproducirSFX(sonido_Denegacion);
-
-        OcultarPanel(Panel_MainMenu);
-        MostrarPanel(Panel_Salir);
+        MostrarMensajeBloqueado();
+        if (Prototipo)
+            return;
+        OcultarPanel(Panel_Botones);
+        MostrarPanel(Panel_Opciones);
     }
-    public void Cerrar() // Clic
+    public void Salir_Opciones() //Clic al boton salir en el panel de Opciones
+    {
+        OcultarPanel(Panel_Opciones);
+        MostrarPanel(Panel_Botones);
+    }
+
+    public void Novedades() //Clic
+    {
+        MostrarMensajeBloqueado();
+        if (Prototipo)
+            return;
+        OcultarPanel(Panel_Botones);
+        MostrarPanel(Panel_Novedades);
+    }
+    public void Salir_Novedades() //Clic al boton salir en el panel de Novedades
+    {
+        OcultarPanel(Panel_Novedades);
+        MostrarPanel(Panel_Botones);
+    }
+
+    public void Cambiar_partida()   //Clic
+    {
+        MostrarMensajeBloqueado();
+        if (Prototipo)
+            return;
+        OcultarPanel(Panel_Botones);
+        MostrarPanel(Panel_Slots);
+    }
+
+    public void Salir_Slots()
+    {
+        OcultarPanel(Panel_Slots);
+        MostrarPanel(Panel_Botones);
+    }
+
+    public void Salir() //Clic
     {
         Debug.Log("Saliendo del juego...");
 
         // 🧠 Si hay un GameManager asignado, guardar antes de salir
         //GM.GuardarPartida();
 
-#if UNITY_EDITOR
-
-        // Cierra el modo play en el editor
-        UnityEditor.EditorApplication.isPlaying = false;
-
-#else
-
-        // Cierra el juego en build
-        Application.Quit();
-
-#endif
+        #if UNITY_EDITOR
+                // Cierra el modo play en el editor
+                UnityEditor.EditorApplication.isPlaying = false;
+        #else
+            // Cierra el juego en build
+            Application.Quit();
+        #endif
     }
 
-
-    public void Cancelar_salir() // Clic
-    {
-        AudioManager.Instance.ReproducirSFX(sonido_Denegacion);
-
-        OcultarPanel(Panel_Salir);
-        MostrarPanel(Panel_MainMenu);
-    }
-
-
-    // =========================================================
-    // SELECCIONAR NIVEL
-    // =========================================================
-
-    public void MostrarInformacionNivel(int numeroNivel)
-    {
-        // El numero visual es 1, 2, 3...
-        // El indice interno es 0, 1, 2...
-        int indice = numeroNivel - 1;
-
-
-        // =====================================================
-        // NOMBRE DEL NIVEL
-        // =====================================================
-
-        textoNivelSeleccionado.text =
-            "Nivel " + numeroNivel.ToString("00");
-
-
-        // =====================================================
-        // MEJOR TIEMPO
-        // =====================================================
-
-        string claveTiempo = "RollingMaze_Tiempo_" + indice;
-
-        if (PlayerPrefs.HasKey(claveTiempo))
-        {
-            float mejorTiempo =
-                PlayerPrefs.GetFloat(claveTiempo);
-
-            textoMejorTiempo.text =
-                FormatearTiempo(mejorTiempo);
-        }
-        else
-        {
-            textoMejorTiempo.text = "--:--:--";
-        }
-
-        // =====================================================
-        // MEDALLA GUARDADA
-        // =====================================================
-
-        string claveMedalla =
-            "RollingMaze_Nivel_" + indice;
-
-        int medallaGuardada =
-            PlayerPrefs.GetInt(claveMedalla, 0);
-
-
-        ActualizarMedallas(medallaGuardada);
-    }
-    private void ActualizarNivelesDesbloqueados()
-    {
-        int nivelesPasados = 0;
-
-        // Buscar cuántos niveles consecutivos han sido completados
-        for (int i = 0; i < 24; i++)
-        {
-            string claveMedalla = "RollingMaze_Nivel_" + i;
-
-            int medalla = PlayerPrefs.GetInt(claveMedalla, 0);
-
-            if (medalla > 0)
-            {
-                nivelesPasados++;
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        // El siguiente nivel también queda desbloqueado
-        int ultimoNivelDesbloqueado = nivelesPasados + 1;
-
-        // Nunca superar el nivel 24
-        if (ultimoNivelDesbloqueado > 24)
-        {
-            ultimoNivelDesbloqueado = 24;
-        }
-
-        // Actualizar visualmente los 24 botones
-        for (int i = 0; i < 24; i++)
-        {
-            int numeroNivel = i + 1;
-
-            bool desbloqueado =
-                numeroNivel <= ultimoNivelDesbloqueado;
-
-            selectoresNivel[i].ActualizarEstado(desbloqueado);
-        }
-    }
-
-    // =========================================================
-    // FORMATO DEL TIEMPO
-    // =========================================================
-
-    private string FormatearTiempo(float tiempo)
-    {
-        int minutos =
-            Mathf.FloorToInt(tiempo / 60);
-
-        int segundos =
-            Mathf.FloorToInt(tiempo % 60);
-
-        int centesimas =
-            Mathf.FloorToInt((tiempo * 100) % 100);
-
-
-        return minutos.ToString("00") + ":" +
-               segundos.ToString("00") + ":" +
-               centesimas.ToString("00");
-    }
-
-
-    // =========================================================
-    // MEDALLAS
-    // =========================================================
-
-    private void ActualizarMedallas(int medalla)
-    {
-        // Primero apagar todas
-        CambiarAlpha(medallaBronce, 0.4f);
-        CambiarAlpha(medallaPlata, 0.4f);
-        CambiarAlpha(medallaOro, 0.4f);
-
-
-        // Bronce o superior
-        if (medalla >= 1)
-        {
-            CambiarAlpha(medallaBronce, 1f);
-        }
-
-
-        // Plata o superior
-        if (medalla >= 2)
-        {
-            CambiarAlpha(medallaPlata, 1f);
-        }
-
-
-        // Oro
-        if (medalla >= 3)
-        {
-            CambiarAlpha(medallaOro, 1f);
-        }
-    }
-
-
-    private void CambiarAlpha(Image imagen, float alpha)
-    {
-        Color color = imagen.color;
-
-        color.a = alpha;
-
-        imagen.color = color;
-    }
-
-
-    // =========================================================
-    // BOTÓN VERDE - JUGAR NIVEL SELECCIONADO
-    // =========================================================
-    public void JugarSeleccionado()     //Clic
-    {
-        if (NivelSeleccionado.indiceNivel < 0)
-        {
-            Debug.Log("No se ha seleccionado ningún nivel.");
-            return;
-        }
-
-        if (NivelSeleccionado.tipoPartida == TipoPartida.Ninguno)
-        {
-            Debug.Log("No se ha seleccionado ningún tipo de partida.");
-            return;
-        }
-        AudioManager.Instance.ReproducirSFX(sonido_Play);
-        SceneManager.LoadScene(SceneNames.Gameplay);
-    }
-
-    // =========================================================
-    // MOSTRAR / OCULTAR PANELES
-    // =========================================================
-
+    // Función genérica que centra cualquier panel
     public void MostrarPanel(RectTransform panel)
     {
         if (panel != null)
         {
             // Centra el panel en el Canvas
             panel.anchoredPosition = Vector2.zero;
-
             panel.localScale = Vector3.one;
-
             panel.gameObject.SetActive(true);
         }
         else
         {
-            Debug.LogWarning(
-                "Se pasó un panel nulo a MostrarPanel."
-            );
+            Debug.LogWarning("Se pasó un panel nulo a MostrarPanel.");
         }
     }
+
+    // Función opcional para ocultar cualquier panel
     public void OcultarPanel(RectTransform panel)
     {
         if (panel != null)
         {
             panel.gameObject.SetActive(false);
         }
+    }
+    private IEnumerator ZoomBackground(string sceneToLoad)
+    {
+        if (entrandoADungeon) yield break;
+        entrandoADungeon = true;
+        OcultarPanel(Panel_Botones);
+        audioSource.PlayOneShot(sonido_Entrar_Cueva);
+
+        Vector3 startScale = fondo.localScale;
+        Vector2 startPos = fondo.anchoredPosition;
+
+        // 1️⃣ Pequeño zoom OUT (anticipación)
+        yield return StartCoroutine(AnimarFondo(
+            startScale,
+            Vector3.one * 0.95f,
+            startPos,
+            startPos,
+            0.2f
+        ));
+
+        yield return new WaitForSeconds(0.03f);
+
+        // 2️⃣ ZOOM IN BRUTAL (entrar a la cueva)
+        yield return StartCoroutine(AnimarFondo(
+            Vector3.one * 0.95f,
+            Vector3.one * 9f,              // 🔥 este valor SÍ importa
+            startPos,
+            startPos + new Vector2(0, 400), // subir hacia la puerta
+            1.4f
+        ));
+        //Cargar escena
+        SceneManager.LoadSceneAsync(sceneToLoad);
+    }
+    private IEnumerator AnimarFondo(
+    Vector3 scaleFrom,
+    Vector3 scaleTo,
+    Vector2 posFrom,
+    Vector2 posTo,
+    float duration
+)
+    {
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            float smooth = Mathf.SmoothStep(0, 1, t);
+
+            fondo.localScale = Vector3.Lerp(scaleFrom, scaleTo, smooth);
+            fondo.anchoredPosition = Vector2.Lerp(posFrom, posTo, smooth);
+
+            yield return null;
+        }
+
+        fondo.localScale = scaleTo;
+        fondo.anchoredPosition = posTo;
+    }
+    private void MostrarMensajeBloqueado()
+    {
+        // Si ya había una animación ejecutándose, la cancelamos
+        secuenciaMensaje?.Kill();
+
+        Panel_TextoBloqueado.gameObject.SetActive(true);
+
+        CanvasGroup_TextoBloqueado.alpha = 0f;
+
+        // 👇 El panel empieza un poco más pequeño
+        Panel_TextoBloqueado.localScale = Vector3.one * 0.9f;
+
+        secuenciaMensaje = DOTween.Sequence();
+
+        // Fade In
+        secuenciaMensaje.Append(
+            CanvasGroup_TextoBloqueado.DOFade(1f, 0.2f)
+        );
+
+        // 👇 Al mismo tiempo que hace el Fade In, crece hasta su tamaño normal
+        secuenciaMensaje.Join(
+            Panel_TextoBloqueado.DOScale(1f, 0.2f)
+        );
+
+        // Espera
+        secuenciaMensaje.AppendInterval(2.5f);
+
+        // Fade Out
+        secuenciaMensaje.Append(
+            CanvasGroup_TextoBloqueado.DOFade(0f, 0.2f)
+        );
+
+        secuenciaMensaje.OnComplete(() =>
+        {
+            Panel_TextoBloqueado.gameObject.SetActive(false);
+        });
     }
 }
